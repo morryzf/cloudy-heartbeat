@@ -1,0 +1,19 @@
+{
+  "name": "cloudy-heartbeat",
+  "version": "1.0.0",
+  "description": "云的心跳 — 让 Cloudy 能主动找 Morry",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

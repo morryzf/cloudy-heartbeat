@@ -1,17 +1,16 @@
 {
   "name": "cloudy-heartbeat",
-  "version": "1.0.0",
-  "description": "云的心跳 — 让 Cloudy 能主动找 Morry",
-  "type": "module",
-  "main": "server.js",
+  "version": "2.0.0",
+  "description": "云的心跳 — Kelivo + Gateway + Wake-up + Bark + Ombre Brain",
+  "main": "start.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node start.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.52.0",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2"
+    "fastify": "^4.28.1",
+    "@fastify/formbody": "^7.4.0",
+    "fs-extra": "^11.2.0"
   },
   "engines": {
     "node": ">=18.0.0"

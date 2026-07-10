@@ -1568,6 +1568,7 @@ async function inlineWakeUp() {
     });
 
     const data = await response.json();
+    console.log("🔍 API 原始返回:", JSON.stringify(data).substring(0, 500));
     const aiText = (data.choices?.[0]?.message?.content || "").trim();
     console.log("🤖 AI 回复:", aiText);
 

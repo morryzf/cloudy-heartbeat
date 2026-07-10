@@ -1524,7 +1524,7 @@ async function inlineWakeUp() {
     if (diffMinutes < wakeAfter) return;
 
     // 构建唤醒 prompt
-    const currentTime = now.toLocaleString("zh-CN", { timeZone: tz });
+    const currentTime = now.toLocaleString("zh-CN");
     let wakePrompt;
     try {
       wakePrompt = require("fs").readFileSync(WAKE_PROMPT_FILE, "utf-8")
@@ -1573,7 +1573,7 @@ async function inlineWakeUp() {
 
    if (!aiText) {
       console.log("❌ AI 回复为空");
-      const ts = now.toLocaleString("zh-CN", { timeZone: tz, hour12: false }).replace(/\//g, "-");
+      const ts = now.toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-");
       appendSpecialEvent(`（${ts} 自动唤醒：本次未发送 Bark）`);
       return;
     }
@@ -1601,7 +1601,7 @@ async function inlineWakeUp() {
     const barkResult = await barkRes.json();
     console.log("📳 Bark:", barkResult);
 
-    const ts = now.toLocaleString("zh-CN", { timeZone: tz, hour12: false }).replace(/\//g, "-");
+    const ts = now.toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-");
     appendSpecialEvent(`（${ts} 刚刚给用户发了 Bark：${title}｜${body}）`);
 
   } catch (err) {

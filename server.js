@@ -1522,7 +1522,7 @@ setInterval(async () => {
       return;
     }
     
-    const now = new Date();
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: process.env.TIME_ZONE || "Asia/Shanghai" }));
     const diffMinutes = Math.floor((now - lastUserTime) / 1000 / 60);
     const hour = parseInt(now.toLocaleString("en-US", { timeZone: process.env.TIME_ZONE || "Asia/Shanghai", hour: "numeric", hour12: false }));
     const dayStart = Number(process.env.WAKE_DAY_START_HOUR) || 9;

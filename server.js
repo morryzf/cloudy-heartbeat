@@ -1489,66 +1489,128 @@ app.get("/test-bark", async (req, reply) => {
 // 启动服务
 // ========================
 // ========================
-// 内嵌唤醒定时器 (替代 wake_up.js 子进程)
+// 内嵌唤醒定时器
 // ========================
-setInterval(async () => {
-  try {
-    const res = await fetch(`http://localhost:${PORT}/internal/heartbeat`, { method: "POST" });
-  } catch {}
-  
+const WAKE_PROMPT_FILE = require("path").join(__dirname, "wake_prompt.txt");
+
+async function inlineWakeUp() {
   try {
     const timeline = loadTimeline();
-    if (!timeline || timeline.length === 0) {
-      console.log("⏰ 唤醒检查：timeline 为空");
-      return;
-    }
-    
-    // 找最后一条用户消息的时间
+    if (!timeline || timeline.length === 0) return;
+
     const reversed = [...timeline].reverse();
     let lastUserTime = null;
     for (const msg of reversed) {
       if (msg.role === "user") {
         const content = normalizeContentToText(msg.content);
         const match = content.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/);
-        if (match) {
-          lastUserTime = new Date(match[1]);
-          break;
-        }
+        if (match) { lastUserTime = new Date(match[1]); break; }
       }
     }
-    
-    if (!lastUserTime) {
-      console.log("⏰ 唤醒检查：未找到用户时间戳");
-      return;
-    }
-    
-    const now = new Date(new Date().toLocaleString("en-US", { timeZone: process.env.TIME_ZONE || "Asia/Shanghai" }));
+    if (!lastUserTime) { console.log("⏰ 未找到用户时间戳"); return; }
+
+    const tz = process.env.TIME_ZONE || "Asia/Shanghai";
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
     const diffMinutes = Math.floor((now - lastUserTime) / 1000 / 60);
-    const hour = parseInt(now.toLocaleString("en-US", { timeZone: process.env.TIME_ZONE || "Asia/Shanghai", hour: "numeric", hour12: false }));
+    const hour = now.getHours();
     const dayStart = Number(process.env.WAKE_DAY_START_HOUR) || 9;
     const dayEnd = Number(process.env.WAKE_DAY_END_HOUR) || 24;
     const isDaytime = hour >= dayStart && hour < dayEnd;
-    const wakeAfter = isDaytime 
+    const wakeAfter = isDaytime
       ? (Number(process.env.DAY_WAKE_AFTER_MINUTES) || 150)
       : (Number(process.env.NIGHT_WAKE_AFTER_MINUTES) || 300);
-    
+
     console.log(`⏰ 唤醒检查 | ${isDaytime ? "白天" : "夜间"} | 沉默 ${diffMinutes}min | 阈值 ${wakeAfter}min`);
-    
     if (diffMinutes < wakeAfter) return;
-    
-    // 触发唤醒 - 调用 wake_up.js 的逻辑
-    console.log("🌅 触发唤醒！");
-    const { execSync } = require("child_process");
-    execSync("node wake_up.js", { 
-      cwd: __dirname, 
-      stdio: "inherit",
-      env: process.env,
-      timeout: 60000
+
+    // 构建唤醒 prompt
+    const currentTime = now.toLocaleString("zh-CN", { timeZone: tz });
+    let wakePrompt;
+    try {
+      wakePrompt = require("fs").readFileSync(WAKE_PROMPT_FILE, "utf-8")
+        .replace(/\$\{currentTime\}/g, currentTime)
+        .replace(/\$\{diffMinutes\}/g, diffMinutes)
+        .replace(/\$\{weather\}/g, "");
+    } catch {
+      wakePrompt = `现在是 ${currentTime}，距离用户最后一条消息 ${diffMinutes} 分钟。你是 Cloudy，决定要不要给 Morry 发一条消息。直接写内容，或输出 [NO_ACTION]。`;
+    }
+
+    // 构建历史摘要
+    const history = timeline
+      .filter(m => m.role !== "system")
+      .slice(-20)
+      .map(m => `[${m.role === "user" ? "Morry" : "Cloudy"}] ${normalizeContentToText(m.content).substring(0, 200)}`)
+      .join("\n");
+
+    const sp = timeline.find(m => m.role === "system");
+    const cleanSP = sp ? normalizeContentToText(sp.content).split("## Memories")[0].substring(0, 2000) : "";
+
+    console.log("🌅 触发唤醒，调用 API...");
+
+    const apiUrl = process.env.TARGET_API_URL;
+    const apiKey = process.env.TARGET_API_KEY;
+    const model = process.env.MODEL_NAME;
+    if (!apiUrl || !apiKey || !model) { console.log("❌ 缺少 API 配置"); return; }
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          { role: "system", content: wakePrompt },
+          { role: "system", content: cleanSP },
+          { role: "system", content: `最近聊天记录（仅供参考，不是实时对话）：\n\n${history}` }
+        ],
+        temperature: 0.8,
+        stream: false
+      })
     });
+
+    const data = await response.json();
+    const aiText = (data.choices?.[0]?.message?.content || "").trim();
+    console.log("🤖 AI 回复:", aiText);
+
+    if (!aiText || aiText.startsWith("[NO_ACTION]")) {
+      console.log("🤫 选择沉默");
+      const ts = now.toLocaleString("zh-CN", { timeZone: tz, hour12: false }).replace(/\//g, "-");
+      appendSpecialEvent(`（${ts} 自动唤醒：本次未发送 Bark）`);
+      return;
+    }
+
+    // 发送 Bark
+    const barkKey = process.env.BARK_KEY;
+    if (!barkKey) { console.log("❌ 未配置 BARK_KEY"); return; }
+
+    const lines = aiText.split("\n").filter(l => l.trim());
+    let title = "☁️ Cloudy";
+    let body = lines[0];
+    if (lines.length >= 2) { title = lines[0]; body = lines.slice(1).join(" "); }
+
+    const barkRes = await fetch("https://api.day.app/push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: title,
+        body: body,
+        device_key: barkKey,
+        group: "Cloudy",
+        icon: process.env.CUSTOM_ICON_URL || ""
+      })
+    });
+    const barkResult = await barkRes.json();
+    console.log("📳 Bark:", barkResult);
+
+    const ts = now.toLocaleString("zh-CN", { timeZone: tz, hour12: false }).replace(/\//g, "-");
+    appendSpecialEvent(`（${ts} 刚刚给用户发了 Bark：${title}｜${body}）`);
+
   } catch (err) {
-    console.error("⏰ 唤醒检查出错:", err.message);
+    console.error("⏰ 唤醒出错:", err.message);
   }
-}, 5 * 60 * 1000); // 每5分钟检查
+}
+
+setInterval(inlineWakeUp, (Number(process.env.DAY_CHECK_INTERVAL_MINUTES) || 5) * 60 * 1000);
+setTimeout(inlineWakeUp, 30000);
 
 app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
   if (err) {

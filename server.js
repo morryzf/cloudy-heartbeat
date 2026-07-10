@@ -1492,6 +1492,7 @@ app.get("/test-bark", async (req, reply) => {
 // 内嵌唤醒定时器
 // ========================
 const WAKE_PROMPT_FILE = require("path").join(__dirname, "wake_prompt.txt");
+let lastWakeTime = 0;
 
 async function inlineWakeUp() {
   try {
@@ -1545,6 +1546,12 @@ async function inlineWakeUp() {
     const sp = timeline.find(m => m.role === "system");
     const cleanSP = sp ? normalizeContentToText(sp.content).split("## Memories")[0].substring(0, 2000) : "";
 
+    const cooldown = wakeAfter * 60 * 1000;
+    if (Date.now() - lastWakeTime < cooldown) {
+      console.log("⏰ 冷却中，跳过");
+      return;
+    }
+    lastWakeTime = Date.now();
     console.log("🌅 触发唤醒，调用 API...");
 
     const apiUrl = process.env.TARGET_API_URL;

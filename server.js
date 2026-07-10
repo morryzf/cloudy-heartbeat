@@ -1571,8 +1571,8 @@ async function inlineWakeUp() {
     const aiText = (data.choices?.[0]?.message?.content || "").trim();
     console.log("🤖 AI 回复:", aiText);
 
-    if (!aiText || aiText.startsWith("[NO_ACTION]")) {
-      console.log("🤫 选择沉默");
+   if (!aiText) {
+      console.log("❌ AI 回复为空");
       const ts = now.toLocaleString("zh-CN", { timeZone: tz, hour12: false }).replace(/\//g, "-");
       appendSpecialEvent(`（${ts} 自动唤醒：本次未发送 Bark）`);
       return;

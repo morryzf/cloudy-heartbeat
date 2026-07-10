@@ -1488,6 +1488,68 @@ app.get("/test-bark", async (req, reply) => {
 // ========================
 // 启动服务
 // ========================
+// ========================
+// 内嵌唤醒定时器 (替代 wake_up.js 子进程)
+// ========================
+setInterval(async () => {
+  try {
+    const res = await fetch(`http://localhost:${PORT}/internal/heartbeat`, { method: "POST" });
+  } catch {}
+  
+  try {
+    const timeline = loadTimeline();
+    if (!timeline || timeline.length === 0) {
+      console.log("⏰ 唤醒检查：timeline 为空");
+      return;
+    }
+    
+    // 找最后一条用户消息的时间
+    const reversed = [...timeline].reverse();
+    let lastUserTime = null;
+    for (const msg of reversed) {
+      if (msg.role === "user") {
+        const content = normalizeContentToText(msg.content);
+        const match = content.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/);
+        if (match) {
+          lastUserTime = new Date(match[1]);
+          break;
+        }
+      }
+    }
+    
+    if (!lastUserTime) {
+      console.log("⏰ 唤醒检查：未找到用户时间戳");
+      return;
+    }
+    
+    const now = new Date();
+    const diffMinutes = Math.floor((now - lastUserTime) / 1000 / 60);
+    const hour = parseInt(now.toLocaleString("en-US", { timeZone: process.env.TIME_ZONE || "Asia/Shanghai", hour: "numeric", hour12: false }));
+    const dayStart = Number(process.env.WAKE_DAY_START_HOUR) || 9;
+    const dayEnd = Number(process.env.WAKE_DAY_END_HOUR) || 24;
+    const isDaytime = hour >= dayStart && hour < dayEnd;
+    const wakeAfter = isDaytime 
+      ? (Number(process.env.DAY_WAKE_AFTER_MINUTES) || 150)
+      : (Number(process.env.NIGHT_WAKE_AFTER_MINUTES) || 300);
+    
+    console.log(`⏰ 唤醒检查 | ${isDaytime ? "白天" : "夜间"} | 沉默 ${diffMinutes}min | 阈值 ${wakeAfter}min`);
+    
+    if (diffMinutes < wakeAfter) return;
+    
+    // 触发唤醒 - 调用 wake_up.js 的逻辑
+    console.log("🌅 触发唤醒！");
+    const { execSync } = require("child_process");
+    execSync("node wake_up.js", { 
+      cwd: __dirname, 
+      stdio: "inherit",
+      env: process.env,
+      timeout: 60000
+    });
+  } catch (err) {
+    console.error("⏰ 唤醒检查出错:", err.message);
+  }
+}, 5 * 60 * 1000); // 每5分钟检查
+
 app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
   if (err) {
     console.error(err);

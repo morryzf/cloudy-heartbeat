@@ -1558,9 +1558,8 @@ async function inlineWakeUp() {
       body: JSON.stringify({
         model: model,
         messages: [
-          { role: "system", content: wakePrompt },
-          { role: "system", content: cleanSP },
-          { role: "system", content: `最近聊天记录（仅供参考，不是实时对话）：\n\n${history}` }
+          { role: "system", content: wakePrompt + "\n\n---\n\n" + cleanSP + "\n\n---\n最近聊天记录：\n" + history },
+          { role: "user", content: "醒来吧。想想她，然后决定要说点什么。" }
         ],
         temperature: 0.8,
         stream: false

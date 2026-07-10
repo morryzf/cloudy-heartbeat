@@ -1616,7 +1616,19 @@ async function inlineWakeUp() {
   }
 }
 
-setInterval(inlineWakeUp, (Number(process.env.DAY_CHECK_INTERVAL_MINUTES) || 5) * 60 * 1000);
+async function wakeLoop() {
+  await inlineWakeUp();
+  const hour = new Date(new Date().toLocaleString("en-US", { timeZone: process.env.TIME_ZONE || "Asia/Shanghai" })).getHours();
+  const dayStart = Number(process.env.WAKE_DAY_START_HOUR) || 9;
+  const dayEnd = Number(process.env.WAKE_DAY_END_HOUR) || 24;
+  const isDaytime = hour >= dayStart && hour < dayEnd;
+  const interval = isDaytime
+    ? (Number(process.env.DAY_CHECK_INTERVAL_MINUTES) || 5)
+    : (Number(process.env.NIGHT_CHECK_INTERVAL_MINUTES) || 60);
+  console.log(`⏰ 下次检查在 ${interval} 分钟后`);
+  setTimeout(wakeLoop, interval * 60 * 1000);
+}
+setTimeout(wakeLoop, 30000);
 setTimeout(inlineWakeUp, 30000);
 
 app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {

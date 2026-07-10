@@ -20,8 +20,8 @@ app.register(require("@fastify/formbody"));
 
 const PORT = Number(process.env.PORT) || 3000;
 const TARGET_API_URL = process.env.TARGET_API_URL;
-const TIMELINE_FILE = "enhanced_messages.json";
-const TIMESTAMP_DB_FILE = "./message_timestamps.json";
+const TIMELINE_FILE = "/data/enhanced_messages.json";
+const TIMESTAMP_DB_FILE = "/data/message_timestamps.json";
 const DEFAULT_RESTART_COMMAND = "echo 'Zeabur: please restart via dashboard'";
 
 // ========================

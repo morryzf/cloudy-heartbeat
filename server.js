@@ -1556,7 +1556,7 @@ async function inlineWakeUp() {
 
     const apiUrl = process.env.TARGET_API_URL;
     const apiKey = process.env.TARGET_API_KEY;
-    const model = process.env.MODEL_NAME;
+    const model = process.env.WAKE_MODEL_NAME || process.env.MODEL_NAME;
     if (!apiUrl || !apiKey || !model) { console.log("❌ 缺少 API 配置"); return; }
 
     const response = await fetch(apiUrl, {

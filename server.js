@@ -341,6 +341,7 @@ function stripPosition(messages) {
 }
 
 let wakeUpLastHeartbeat = null;
+let lastUserMessageTime = 0;
 
 // ========================
 // 预设方案
@@ -455,6 +456,12 @@ app.post("/v1/chat/completions", async (req, reply) => {
     console.log("============================\n");
 
     const kelivoMessages = body.messages || [];
+
+    // 记录用户最后发消息的时间（不依赖 content 里的时间戳）
+    if (kelivoMessages.some(m => m.role === "user")) {
+      lastUserMessageTime = Date.now();
+    }
+
     const oldTimeline = loadTimeline();
 
     const tsDB = loadTimestampDB();
@@ -480,32 +487,8 @@ app.post("/v1/chat/completions", async (req, reply) => {
       .map(prepareMessageForLLM)
       .filter(Boolean);
 
-    const oldEvents = stripPosition(
-      oldTimeline.filter(isSpecialEvent).sort((a, b) => {
-        const timeA = extractTimestampWithMemory(a, tsDB);
-        const timeB = extractTimestampWithMemory(b, tsDB);
-        if (timeA && timeB) return timeA - timeB;
-        return 0;
-      })
-    );
-
-    console.log("本次注入的特殊事件数量:", oldEvents.length);
-    if (oldEvents.length > 0) console.log("示例事件内容:", oldEvents[0].content.substring(0, 80));
-
-    for (const event of oldEvents) {
-      const eventTime = extractTimestampWithMemory(event, tsDB);
-      if (!eventTime) { llmMessages.push(event); continue; }
-      let inserted = false;
-      for (let i = 0; i < llmMessages.length; i++) {
-        const msgTime = extractTimestampWithMemory(llmMessages[i], tsDB);
-        if (msgTime && msgTime >= eventTime) {
-          llmMessages.splice(i, 0, event);
-          inserted = true;
-          break;
-        }
-      }
-      if (!inserted) llmMessages.push(event);
-    }
+    // Bark 事件只保留在 timeline 里供查看，不注入到 LLM 对话中
+    console.log("跳过特殊事件注入（避免影响对话）");
 
 
 
@@ -1499,16 +1482,8 @@ async function inlineWakeUp() {
     const timeline = loadTimeline();
     if (!timeline || timeline.length === 0) return;
 
-    const reversed = [...timeline].reverse();
-    let lastUserTime = null;
-    for (const msg of reversed) {
-      if (msg.role === "user") {
-        const content = normalizeContentToText(msg.content);
-        const match = content.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/);
-        if (match) { lastUserTime = new Date(match[1]); break; }
-      }
-    }
-    if (!lastUserTime) { console.log("⏰ 未找到用户时间戳"); return; }
+    if (!lastUserMessageTime) { console.log("⏰ 用户还没发过消息"); return; }
+    const lastUserTime = new Date(lastUserMessageTime);
 
     const tz = process.env.TIME_ZONE || "Asia/Shanghai";
     const now = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));

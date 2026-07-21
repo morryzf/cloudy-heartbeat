@@ -296,7 +296,17 @@ function stripPosition(messages) {
 }
 
 let wakeUpLastHeartbeat = null;
-let lastUserMessageTime = 0;
+const USER_MSG_STATE_FILE = "/data/user_msg_state.json";
+function loadLastUserMessageTime() {
+  try {
+    const data = fs.readJsonSync(USER_MSG_STATE_FILE);
+    return data.lastUserMessageTime || 0;
+  } catch { return 0; }
+}
+function saveLastUserMessageTime(ts) {
+  try { fs.writeJsonSync(USER_MSG_STATE_FILE, { lastUserMessageTime: ts }); } catch {}
+}
+let lastUserMessageTime = loadLastUserMessageTime();
 
 // ========================
 // 预设方案
@@ -415,6 +425,7 @@ app.post("/v1/chat/completions", async (req, reply) => {
     // 记录用户最后发消息的时间（不依赖 content 里的时间戳）
     if (kelivoMessages.some(m => m.role === "user")) {
       lastUserMessageTime = Date.now();
+      saveLastUserMessageTime(lastUserMessageTime);
     }
 
     const oldTimeline = loadTimeline();
@@ -1430,7 +1441,17 @@ app.get("/test-bark", async (req, reply) => {
 // 内嵌唤醒定时器
 // ========================
 const WAKE_PROMPT_FILE = require("path").join(__dirname, "wake_prompt.txt");
-let lastWakeTime = 0;
+const WAKE_STATE_FILE = "/data/wake_state.json";
+function loadLastWakeTime() {
+  try {
+    const data = fs.readJsonSync(WAKE_STATE_FILE);
+    return data.lastWakeTime || 0;
+  } catch { return 0; }
+}
+function saveLastWakeTime(ts) {
+  try { fs.writeJsonSync(WAKE_STATE_FILE, { lastWakeTime: ts }); } catch {}
+}
+let lastWakeTime = loadLastWakeTime();
 
 async function inlineWakeUp() {
   try {
@@ -1482,6 +1503,7 @@ async function inlineWakeUp() {
       return;
     }
     lastWakeTime = Date.now();
+    saveLastWakeTime(lastWakeTime);
     console.log("🌅 触发唤醒，调用 API...");
 
     const apiUrl = process.env.TARGET_API_URL;

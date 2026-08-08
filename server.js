@@ -1633,6 +1633,7 @@ async function inlineWakeUp() {
         ],
         temperature: 0.8,
         stream: false
+        tool_choice: "none"
       })
     });
 

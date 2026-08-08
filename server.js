@@ -1632,7 +1632,7 @@ async function inlineWakeUp() {
           { role: "user", content: "醒来吧。想想她，然后决定要说点什么。" }
         ],
         temperature: 0.8,
-        stream: false
+        stream: false,
         tool_choice: "none"
       })
     });

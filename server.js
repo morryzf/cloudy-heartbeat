@@ -20,6 +20,7 @@ app.register(require("@fastify/formbody"));
 
 const PORT = Number(process.env.PORT) || 3000;
 const TARGET_API_URL = process.env.TARGET_API_URL;
+const TARGET_API_URL_2 = process.env.TARGET_API_URL_2;
 const TIMELINE_FILE = "/data/enhanced_messages.json";
 const TIMESTAMP_DB_FILE = "/data/message_timestamps.json";
 const DEFAULT_RESTART_COMMAND = "echo 'Zeabur: please restart via dashboard'";
@@ -408,6 +409,12 @@ app.get("/v1/models", async (req, reply) => {
     data: [{ id: "DeepSeek-V4-Pro", object: "model", created: 0, owned_by: "gateway" }]
   });
 });
+app.get("/v2/models", async (req, reply) => {
+  reply.send({
+    object: "list",
+    data: [{ id: "[K2]claude-opus-4-6", object: "model", created: 0, owned_by: "gateway-v2" }]
+  });
+});
 
 // ========================
 // Chat Completions
@@ -538,6 +545,110 @@ app.post("/v1/chat/completions", async (req, reply) => {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.TARGET_API_KEY}`
+      },
+      body: JSON.stringify({ ...body, messages: llmMessages })
+    });
+
+    if (!response.body) {
+      return reply.code(response.status).send({ error: "上游 API 没有返回可读取的响应体" });
+    }
+
+    reply.raw.writeHead(response.status, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive"
+    });
+
+    const reader = response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      reply.raw.write(value);
+    }
+    reply.raw.end();
+  } catch (err) {
+    console.error(err);
+    reply.code(500).send({ error: err.message });
+  }
+});
+
+app.post("/v2/chat/completions", async (req, reply) => {
+  try {
+    const body = req.body;
+    const kelivoMessages = body.messages || [];
+
+    if (kelivoMessages.some(m => m.role === "user")) {
+      lastUserMessageTime = Date.now();
+      saveLastUserMessageTime(lastUserMessageTime);
+    }
+
+    const tsDB = loadTimestampDB();
+    let tsDBDirty = false;
+    for (const msg of kelivoMessages) {
+      if (msg.role === "system") continue;
+      if (msg.role === "tool") continue;
+      const ts = extractTimestamp(normalizeContentToText(msg.content));
+      if (!ts) continue;
+      const fp = makeFingerprint(msg);
+      const fpStripped = makeFingerprintStripped(msg);
+      if (!tsDB[fp]) { tsDB[fp] = ts.toISOString(); tsDBDirty = true; }
+      if (!tsDB[fpStripped]) { tsDB[fpStripped] = ts.toISOString(); tsDBDirty = true; }
+    }
+    if (tsDBDirty) saveTimestampDB(tsDB);
+
+    const finalTimeline = buildTimeline(kelivoMessages, tsDB);
+    saveTimeline(finalTimeline);
+
+    const llmMessages = kelivoMessages
+      .map(prepareMessageForLLM)
+      .filter(Boolean);
+
+    // 同样的 tool_calls 修复逻辑
+    const removeSet = new Set();
+    for (let i = 0; i < llmMessages.length; i++) {
+      const msg = llmMessages[i];
+      if (msg.role !== "assistant" || !msg.tool_calls) continue;
+      const expectedIds = msg.tool_calls.map(tc => tc.id);
+      const followingTools = [];
+      for (let j = i + 1; j < llmMessages.length; j++) {
+        if (llmMessages[j].role === "tool") followingTools.push(llmMessages[j]);
+        else break;
+      }
+      const foundIds = followingTools.map(t => t.tool_call_id);
+      if (!expectedIds.every(id => foundIds.includes(id))) {
+        removeSet.add(i);
+        for (let j = i + 1; j < llmMessages.length; j++) {
+          if (llmMessages[j].role === "tool") removeSet.add(j);
+          else break;
+        }
+      }
+    }
+    for (let i = 0; i < llmMessages.length; i++) {
+      if (llmMessages[i].role !== "tool") continue;
+      let hasMatch = false;
+      for (let j = i - 1; j >= 0; j--) {
+        const prev = llmMessages[j];
+        if (prev.role === "assistant" && prev.tool_calls) {
+          if (prev.tool_calls.map(tc => tc.id).includes(llmMessages[i].tool_call_id)) hasMatch = true;
+          break;
+        } else if (prev.role === "tool") continue;
+        else break;
+      }
+      if (!hasMatch) removeSet.add(i);
+    }
+    for (const idx of Array.from(removeSet).sort((a, b) => b - a)) {
+      llmMessages.splice(idx, 1);
+    }
+
+    if (!TARGET_API_URL_2 || !process.env.TARGET_API_KEY_2) {
+      return reply.code(500).send({ error: "TARGET_API_URL_2 / TARGET_API_KEY_2 未配置" });
+    }
+
+    const response = await fetch(TARGET_API_URL_2, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.TARGET_API_KEY_2}`
       },
       body: JSON.stringify({ ...body, messages: llmMessages })
     });

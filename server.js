@@ -546,7 +546,11 @@ app.post("/v1/chat/completions", async (req, reply) => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.TARGET_API_KEY}`
       },
-      body: JSON.stringify({ ...body, messages: llmMessages })
+      body: JSON.stringify({ 
+        model: body.model || process.env.MODEL_NAME,
+        ...body, 
+        messages: llmMessages 
+      })
     });
 
     if (!response.body) {
@@ -645,13 +649,17 @@ app.post("/v2/chat/completions", async (req, reply) => {
     }
 
     const response = await fetch(TARGET_API_URL_2, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.TARGET_API_KEY_2}`
-      },
-      body: JSON.stringify({ ...body, messages: llmMessages })
-    });
+     method: "POST",
+     headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.TARGET_API_KEY_2}`
+    },
+      body: JSON.stringify({ 
+      model: body.model || process.env.MODEL_NAME,
+      ...body, 
+      messages: llmMessages 
+    })
+  });
 
     if (!response.body) {
       return reply.code(response.status).send({ error: "上游 API 没有返回可读取的响应体" });

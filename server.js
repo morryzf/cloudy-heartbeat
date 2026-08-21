@@ -99,6 +99,46 @@ function prepareMessageForLLM(msg) {
   return { ...msg, content: textContent };
 }
 
+function buildCurrentTimeContext() {
+  const configuredTimeZone = (process.env.TIME_ZONE || "Asia/Shanghai").trim();
+  let timeZone = configuredTimeZone;
+  let currentTime;
+
+  try {
+    currentTime = new Intl.DateTimeFormat("zh-CN", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).format(new Date());
+  } catch {
+    timeZone = "UTC";
+    currentTime = new Intl.DateTimeFormat("zh-CN", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).format(new Date());
+  }
+
+  return [
+    "## 实时时间（系统提供）",
+    "当前时间：" + currentTime,
+    "时区：" + timeZone,
+    "这是本次回复生成时的准确时间。涉及“现在”、今天、早晚、稍后或时间安排时，请以此为准。"
+  ].join("\n");
+}
+
 function sanitizeForLog(value) {
   if (typeof value === "string") {
     if (isDataImageUrl(value)) {
@@ -535,6 +575,8 @@ app.post("/v1/chat/completions", async (req, reply) => {
       llmMessages.splice(idx, 1);
     }
 
+    llmMessages.unshift({ role: "system", content: buildCurrentTimeContext() });
+
     if (!TARGET_API_URL || !process.env.TARGET_API_KEY) {
       return reply.code(500).send({ error: "TARGET_API_URL / TARGET_API_KEY 未配置" });
     }
@@ -643,6 +685,8 @@ app.post("/v2/chat/completions", async (req, reply) => {
     for (const idx of Array.from(removeSet).sort((a, b) => b - a)) {
       llmMessages.splice(idx, 1);
     }
+
+    llmMessages.unshift({ role: "system", content: buildCurrentTimeContext() });
 
     if (!TARGET_API_URL_2 || !process.env.TARGET_API_KEY_2) {
       return reply.code(500).send({ error: "TARGET_API_URL_2 / TARGET_API_KEY_2 未配置" });

@@ -285,6 +285,44 @@ function isSystemRule(msg) {
 // ========================
 // 构建 Timeline
 // ========================
+function timelineMessageKey(msg) {
+  return JSON.stringify({ role: msg.role, content: msg.content });
+}
+
+function mergeTimelineMessages(existingMessages, incomingMessages) {
+  if (existingMessages.length === 0) return incomingMessages;
+  if (incomingMessages.length === 0) return existingMessages;
+
+  // Kelivo 有时会发送完整历史，有时只发送最近几条。
+  // 找到旧记录尾部与新请求中的最大重叠，避免重复，同时保留未随本次请求带来的旧话题。
+  let bestOverlap = { length: 0, incomingStart: 0 };
+  for (let incomingStart = 0; incomingStart < incomingMessages.length; incomingStart++) {
+    const maxLength = Math.min(existingMessages.length, incomingMessages.length - incomingStart);
+    for (let length = maxLength; length > bestOverlap.length; length--) {
+      const oldStart = existingMessages.length - length;
+      const matches = existingMessages
+        .slice(oldStart)
+        .every((msg, index) => timelineMessageKey(msg) === timelineMessageKey(incomingMessages[incomingStart + index]));
+      if (matches) {
+        bestOverlap = { length, incomingStart };
+        break;
+      }
+    }
+  }
+
+  if (bestOverlap.length === 0) {
+    return [...existingMessages, ...incomingMessages];
+  }
+
+  // 新请求前面还有内容，说明它已包含更完整的历史，以它为准即可。
+  if (bestOverlap.incomingStart > 0) {
+    return incomingMessages;
+  }
+
+  // 新请求从旧记录的末尾继续，只追加新增消息。
+  return [...existingMessages, ...incomingMessages.slice(bestOverlap.length)];
+}
+
 function buildTimeline(kelivoMessages, tsDB) {
   const oldTimeline = loadTimeline();
   const newSystemMessages = kelivoMessages
@@ -293,20 +331,15 @@ function buildTimeline(kelivoMessages, tsDB) {
   const latestSP = newSystemMessages.length > 0 ? newSystemMessages[newSystemMessages.length - 1] : null;
   const oldSP = oldTimeline.find(msg => msg.role === "system");
 
+  const oldRealMessages = oldTimeline
+    .filter(isRealMessageForTimeline)
+    .map(normalizeMessageForTimeline);
   const newRealMessages = kelivoMessages
     .filter(isRealMessageForTimeline)
     .map(normalizeMessageForTimeline);
 
-  // Bark 事件不再合并回 timeline，只保留真正的对话消息
-  const merged = [...newRealMessages];
-
-  const seen = new Set();
-  const unique = merged.filter(msg => {
-    const key = JSON.stringify({ role: msg.role, content: msg.content });
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // Bark 事件不进入 timeline；真实对话跨请求累积保存。
+  const merged = mergeTimelineMessages(oldRealMessages, newRealMessages);
 
   const result = [];
   if (latestSP) result.push({ ...latestSP, position: 0 });

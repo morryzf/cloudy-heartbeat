@@ -346,7 +346,7 @@ function buildTimeline(kelivoMessages, tsDB) {
   else if (oldSP) result.push({ ...oldSP, position: 0 });
 
   let realPos = 1;
-  for (const msg of unique) {
+  for (const msg of merged) {
     result.push({ ...msg, position: realPos });
     realPos++;
   }

@@ -1714,7 +1714,7 @@ async function inlineWakeUp() {
         model: model,
         messages: [
           { role: "system", content: wakePrompt + "\n\n---\n\n" + cleanSP + "\n\n---\n最近聊天记录：\n" + history },
-          { role: "user", content: "醒来吧。想想她，然后决定要说点什么。" }
+          { role: "user", content: "生成一条自然、可单向发送的简短通知。不要描述自己的状态、动作或任何角色扮演场景。" }
         ],
         temperature: 0.8,
         stream: false,
